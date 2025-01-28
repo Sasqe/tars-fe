@@ -1,4 +1,6 @@
-import React, {useRef, useState, useEffect} from 'react';
+import React, {useRef, useState, useEffect, useCallback} from 'react';
+import '../styles/Canvas.css';
+
 import '../styles/Canvas.css';
 
 const Canvas = () => {
@@ -8,6 +10,16 @@ const Canvas = () => {
     const canvasRef = useRef(null);
     const drawing = useRef(false);
     const ctx = useRef(null);
+
+    const deactivateCanvas = useCallback(() => {
+        setVisible(false);
+        if (drawing.current) {
+            drawing.current = false;
+            ctx.current = null;
+        }
+        isHolding.current = false;
+        clearTimeout(holdTimeout.current);
+    }, []);
 
     const handleMouseDown = (e) => {
         isHolding.current = true;
@@ -42,14 +54,34 @@ const Canvas = () => {
     };
 
     const handleMouseUp = () => {
-        clearTimeout(holdTimeout.current);
-        isHolding.current = false;
-        setVisible(false);
-        if (drawing.current) {
-            drawing.current = false;
-            ctx.current = null;
-        }
+        deactivateCanvas();
     };
+
+    const handleMouseLeaveWindow = useCallback(() => {
+        if (drawing.current) {
+            deactivateCanvas();
+        }
+    }, [deactivateCanvas]);
+
+    useEffect(() => {
+        const handleWindowMouseMove = (e) => {
+            const { clientX, clientY } = e;
+            if (
+                clientX <= 0 || // Left edge
+                clientY <= 0 || // Top edge
+                clientX >= window.innerWidth || // Right edge
+                clientY >= window.innerHeight // Bottom edge
+            ) {
+                handleMouseLeaveWindow();
+            }
+        };
+
+        window.addEventListener('mousemove', handleWindowMouseMove);
+
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMouseMove);
+        };
+    }, [handleMouseLeaveWindow]);
 
     useEffect(() => {
         if (!visible && canvasRef.current) {
