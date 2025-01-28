@@ -49,7 +49,7 @@ const Canvas = () => {
     clearTimeout(holdTimeout.current);
   }, []);
 
-  const submitDrawing = useCallback(() => {
+const submitDrawing = useCallback(() => {
     if (!canvasRef.current) return;
     const context = canvasRef.current.getContext('2d');
 
@@ -66,14 +66,23 @@ const Canvas = () => {
     // Draw the current canvas on top (white drawing)
     tempContext.drawImage(canvasRef.current, 0, 0);
 
-    // Convert to PNG and initiate a download
+    // Convert to PNG and send to API
     tempCanvas.toBlob((blob) => {
       if (blob) {
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'drawing.png';
-        link.click();
-        URL.revokeObjectURL(link.href);
+        const formData = new FormData();
+        formData.append('file', blob, 'drawing.png');
+
+        fetch('http://localhost:8000/predict', {
+          method: 'POST',
+          body: formData
+        })
+          .then(response => response.json())
+          .then(data => {
+            console.log('API Response:', data);
+          })
+          .catch(error => {
+            console.error('Error submitting drawing:', error);
+          });
       }
     }, 'image/png');
   }, []);
@@ -97,9 +106,7 @@ const Canvas = () => {
           // Move to initial mouse position
           const rect = canvasRef.current.getBoundingClientRect();
           ctx.current.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-
-          console.log("current ctx StrokeStyle color:");
-          console.log(ctx.current.strokeStyle);
+          
         }
       }
     }, 200);
