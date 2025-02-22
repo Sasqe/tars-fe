@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import { debounce } from 'lodash';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import '../styles/Render.css';
@@ -13,17 +14,10 @@ const layerConfig = [
     { name: 'output', size: 10 }
 ];
 
-// Function to calculate color intensity
-const getNodeColor = (intensity) => {
-    const baseColor = 100; // Dark gray baseline
-    const brightening = Math.min(155 * intensity, 155); // Brighten from baseline
-    return `rgb(${baseColor + brightening}, ${baseColor + brightening}, ${baseColor + brightening})`;
-};
-
 const Node = ({ position, intensity }) => (
     <mesh position={position}>
-        <sphereGeometry args={[0.4, 16, 16]} />
-        <meshStandardMaterial color={getNodeColor(intensity)} />
+        <sphereGeometry args={[0.4, 8, 8]} />
+        <meshStandardMaterial color={`rgb(${100 + intensity * 155}, ${100 + intensity * 155}, ${100 + intensity * 155})`} />
     </mesh>
 );
 
@@ -66,11 +60,14 @@ const MetricsOverlay = ({ nodes, connections }) => {
     );
 };
 
-const SocketOverlay = ({ isConnected }) => {
+const SocketOverlay = ({ isConnected, toggleConnection }) => {
     return (
-        <div className={`socket-overlay ${isConnected ? 'connected' : 'disconnected'}`}>
+        <button
+            className={`socket-overlay ${isConnected ? 'connected' : 'disconnected'}`}
+            onClick={toggleConnection}
+        >
             {isConnected ? '✔ Connected' : '❗ Disconnected'}
-        </div>
+        </button>
     );
 };
 
@@ -79,6 +76,60 @@ const Skeleton = () => {
     const [connections, setConnections] = useState([]);
     const [activity, setActivity] = useState({});
     const [isConnected, setIsConnected] = useState(false);
+    const [isInteracting, setIsInteracting] = useState(false);
+    const wsRef = useRef(null);
+
+    const updateActivity = debounce((layer, data) => {
+        setActivity(prev => ({ ...prev, [layer]: data }));
+    }, 100);
+
+    const connectWebSocket = () => {
+        if (1==1) return;
+
+        const ws = new WebSocket('ws://localhost:8000');
+        wsRef.current = ws;
+
+        ws.onopen = () => setIsConnected(true);
+        ws.onclose = () => {
+            setIsConnected(false);
+            wsRef.current = null;
+        };
+        ws.onerror = () => setIsConnected(false);
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                const { layer, activation_data } = data;
+
+                if (layer && activation_data) {
+                    updateActivity(layer, activation_data);
+                }
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        };
+    };
+
+    const disconnectWebSocket = () => {
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+            setIsConnected(false);
+        }
+    };
+
+    const toggleConnection = () => {
+        if (isConnected) {
+            disconnectWebSocket();
+        } else {
+            connectWebSocket();
+        }
+    };
+
+    useEffect(() => {
+        connectWebSocket();
+        return () => disconnectWebSocket();
+    }, []);
 
     useEffect(() => {
         const newNodes = [];
@@ -121,48 +172,43 @@ const Skeleton = () => {
     }, []);
 
     useEffect(() => {
-        if (1 == 1) return;
-        const ws = new WebSocket('ws://localhost:8000/ws');
+        const handleInteraction = () => setIsInteracting(true);
+        const interval = setInterval(() => setIsInteracting(false), 500);
 
-        ws.onopen = () => setIsConnected(true);
-        ws.onclose = () => setIsConnected(false);
-        ws.onerror = () => setIsConnected(false);
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const { layer, activation_data } = data;
-
-            if (layer && activation_data) {
-                setActivity(prev => ({ ...prev, [layer]: activation_data }));
-            }
+        document.addEventListener('mousemove', handleInteraction);
+        return () => {
+            document.removeEventListener('mousemove', handleInteraction);
+            clearInterval(interval);
         };
-
-        return () => ws.close();
     }, []);
+
+    const memoizedNodes = useMemo(() => nodes.map(node => (
+        <Node
+            key={node.id}
+            position={node.position}
+            intensity={(activity[node.id] || 0) * 0.8}
+        />
+    )), [nodes, activity]);
+
+    const memoizedConnections = useMemo(() => connections.map((conn, index) => (
+        <Connection
+            key={index}
+            start={conn.start}
+            end={conn.end}
+            opacity={(activity[`${conn.start}-${conn.end}`] || 0.1) * 0.8}
+        />
+    )), [connections, activity]);
 
     return (
         <div className="render-background">
             <MetricsOverlay nodes={nodes} connections={connections} />
-            <SocketOverlay isConnected={isConnected} />
+            <SocketOverlay isConnected={isConnected} toggleConnection={toggleConnection} />
             <div className="skeleton-container">
-                <Canvas camera={{ position: [0, 0, 70], fov: 50 }}>
+                <Canvas camera={{ position: [0, 0, 70], fov: 50 }} frameloop={isInteracting ? 'always' : 'demand'}>
                     <ambientLight intensity={0.5} />
                     <pointLight position={[10, 10, 10]} />
-                    {nodes.map(node => (
-                        <Node
-                            key={node.id}
-                            position={node.position}
-                            intensity={activity[node.id] || 0}
-                        />
-                    ))}
-                    {connections.map((conn, index) => (
-                        <Connection
-                            key={index}
-                            start={conn.start}
-                            end={conn.end}
-                            opacity={activity[`${conn.start}-${conn.end}`] || 0}
-                        />
-                    ))}
+                    {memoizedNodes}
+                    {memoizedConnections}
                     <OrbitControls />
                 </Canvas>
             </div>
@@ -170,4 +216,4 @@ const Skeleton = () => {
     );
 };
 
-export default Skeleton;
+export default React.memo(Skeleton);
