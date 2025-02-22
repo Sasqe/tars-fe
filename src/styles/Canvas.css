@@ -1,38 +1,26 @@
-:root {
-  --tile-size: 15px; /* Adjust this value to change the tile size */
-  --columns: 1;
-  --rows: 1;
+.canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: pointer;
 }
 
-body.toggled > #tiles > .tile:hover {
-  opacity: 0.1 !important;
+.canvas-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms ease-in-out, background-color 300ms ease-in-out;
 }
 
-#tiles {
-  height: calc(100vh - 1px);
-  width: calc(100vw - 1px);
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: repeat(var(--columns), 1fr);
-  grid-template-rows: repeat(var(--rows), 1fr);
-}
-
-.tile {
-  cursor: pointer;
-  position: relative;
-}
-.tile.active:before {
-  background-color: white; /* Activated tile color */
-}
-
-.tile:hover:before {
-  background-color: rgba(30, 30, 30, 0.5) !important; /* Make hover effect match transparency */
-}
-
-.tile:before {
-  background-color: rgba(15, 15, 15, 0.3);
-  content: '';
-  inset: 0.5px;
-  position: absolute;
+.canvas-wrapper.visible {
+    background-color: rgba(0, 0, 0, 0.2);
+    opacity: 1;
+    pointer-events: all;
 }
