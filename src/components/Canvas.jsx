@@ -106,7 +106,7 @@ const submitDrawing = useCallback(() => {
           // Move to initial mouse position
           const rect = canvasRef.current.getBoundingClientRect();
           ctx.current.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-          
+
         }
       }
     }, 200);
