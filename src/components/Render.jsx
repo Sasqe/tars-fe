@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import { debounce } from 'lodash';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -14,14 +14,18 @@ const layerConfig = [
     { name: 'output', size: 10 }
 ];
 
-const Node = ({ position, intensity }) => (
-    <mesh position={position}>
-        <sphereGeometry args={[0.4, 8, 8]} />
-        <meshStandardMaterial color={`rgb(${100 + intensity * 155}, ${100 + intensity * 155}, ${100 + intensity * 155})`} />
-    </mesh>
-);
+const Node = React.memo(({ position, intensity }) => {
+    const color = useMemo(() => `rgb(${100 + intensity * 155}, ${100 + intensity * 155}, ${100 + intensity * 155})`, [intensity]);
 
-const Connection = ({ start, end, opacity }) => (
+    return (
+        <mesh position={position}>
+            <sphereGeometry args={[0.4, 6, 6]} />
+            <meshStandardMaterial color={color} />
+        </mesh>
+    );
+});
+
+const Connection = React.memo(({ start, end, opacity }) => (
     <line>
         <bufferGeometry attach="geometry">
             <bufferAttribute
@@ -33,7 +37,7 @@ const Connection = ({ start, end, opacity }) => (
         </bufferGeometry>
         <lineBasicMaterial color="#222222" opacity={0.5 + (opacity * 0.5)} transparent />
     </line>
-);
+));
 
 const MetricsOverlay = ({ nodes, connections }) => {
     const totalHiddenNeurons = 23552;
@@ -62,12 +66,12 @@ const MetricsOverlay = ({ nodes, connections }) => {
 
 const SocketOverlay = ({ isConnected, toggleConnection }) => {
     return (
-        <button
+        <div
             className={`socket-overlay ${isConnected ? 'connected' : 'disconnected'}`}
             onClick={toggleConnection}
         >
             {isConnected ? '✔ Connected' : '❗ Disconnected'}
-        </button>
+        </div>
     );
 };
 
@@ -76,14 +80,13 @@ const Skeleton = () => {
     const [connections, setConnections] = useState([]);
     const [activity, setActivity] = useState({});
     const [isConnected, setIsConnected] = useState(false);
-    const [isInteracting, setIsInteracting] = useState(false);
     const wsRef = useRef(null);
 
     const updateActivity = debounce((layer, data) => {
         setActivity(prev => ({ ...prev, [layer]: data }));
     }, 100);
 
-    const connectWebSocket = () => {
+    const connectWebSocket = useCallback(() => {
         if (1==1) return;
 
         const ws = new WebSocket('ws://localhost:8000');
@@ -108,15 +111,15 @@ const Skeleton = () => {
                 console.error('Error parsing WebSocket message:', error);
             }
         };
-    };
+    }, [updateActivity]);
 
-    const disconnectWebSocket = () => {
+    const disconnectWebSocket = useCallback(() => {
         if (wsRef.current) {
             wsRef.current.close();
             wsRef.current = null;
             setIsConnected(false);
         }
-    };
+    }, []);
 
     const toggleConnection = () => {
         if (isConnected) {
@@ -129,7 +132,7 @@ const Skeleton = () => {
     useEffect(() => {
         connectWebSocket();
         return () => disconnectWebSocket();
-    }, []);
+    }, [connectWebSocket, disconnectWebSocket]);
 
     useEffect(() => {
         const newNodes = [];
@@ -171,16 +174,6 @@ const Skeleton = () => {
         setConnections(newConnections);
     }, []);
 
-    useEffect(() => {
-        const handleInteraction = () => setIsInteracting(true);
-        const interval = setInterval(() => setIsInteracting(false), 500);
-
-        document.addEventListener('mousemove', handleInteraction);
-        return () => {
-            document.removeEventListener('mousemove', handleInteraction);
-            clearInterval(interval);
-        };
-    }, []);
 
     const memoizedNodes = useMemo(() => nodes.map(node => (
         <Node
@@ -204,12 +197,12 @@ const Skeleton = () => {
             <MetricsOverlay nodes={nodes} connections={connections} />
             <SocketOverlay isConnected={isConnected} toggleConnection={toggleConnection} />
             <div className="skeleton-container">
-                <Canvas camera={{ position: [0, 0, 70], fov: 50 }} frameloop={isInteracting ? 'always' : 'demand'}>
+                <Canvas camera={{ position: [0, 0, 70], fov: 50 }} frameloop="demand">
                     <ambientLight intensity={0.5} />
                     <pointLight position={[10, 10, 10]} />
                     {memoizedNodes}
                     {memoizedConnections}
-                    <OrbitControls />
+                    <OrbitControls enableDamping={true} dampingFactor={0.1} />
                 </Canvas>
             </div>
         </div>

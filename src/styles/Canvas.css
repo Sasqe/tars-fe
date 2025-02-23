@@ -13,14 +13,14 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(0, 0, 0, 0);
+    background-color: rgba(255, 255, 255, 0.2);
     opacity: 0;
     pointer-events: none;
     transition: opacity 300ms ease-in-out, background-color 300ms ease-in-out;
 }
 
 .canvas-wrapper.visible {
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(255, 255, 255, 0.2);
     opacity: 1;
     pointer-events: all;
 }
