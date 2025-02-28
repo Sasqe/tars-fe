@@ -33,7 +33,7 @@ const Canvas = () => {
       const initContext = canvasRef.current.getContext('2d');
       // You can set any "default" styles here if you'd like:
       initContext.strokeStyle = 'white';
-      initContext.lineWidth = 2;
+      initContext.lineWidth = 4;
       initContext.lineJoin = 'round';
       initContext.lineCap = 'round';
     }
@@ -51,7 +51,6 @@ const Canvas = () => {
 
 const submitDrawing = useCallback(() => {
     if (!canvasRef.current) return;
-    const context = canvasRef.current.getContext('2d');
 
     // Create a temporary canvas with a black background
     const tempCanvas = document.createElement('canvas');
@@ -97,7 +96,7 @@ const submitDrawing = useCallback(() => {
           // Grab new 2D context and set properties
           ctx.current = canvasRef.current.getContext('2d');
           ctx.current.strokeStyle = 'white';
-          ctx.current.lineWidth = 2;
+          ctx.current.lineWidth = 4;
           ctx.current.lineJoin = 'round';
           ctx.current.lineCap = 'round';
 

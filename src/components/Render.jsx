@@ -6,16 +6,36 @@ import '../styles/Render.css';
 
 
 const layerConfig = [
-    { name: 'input', size: 28, wsLayer: 'input' },
-    { name: 'conv1', size: Math.min(32, 16), wsLayer: 'layer_3' },
-    { name: 'conv2', size: Math.min(32, 32), wsLayer: 'layer_7' },
-    { name: 'conv3', size: Math.min(32, 64), wsLayer: 'layer_10' },
-    { name: 'conv4', size: Math.min(32, 64), wsLayer: 'layer_15' },
-    { name: 'fc1', size: Math.min(32, 128), wsLayer: 'layer_19' },
-    { name: 'output', size: 10, wsLayer: 'layer_19' }
+    { name: 'input', size: 28, wsLayer: 'input' },  // **Mini 28×28 grid**
+    { name: 'conv1', size: Math.min(32, 16), wsLayer: 'layer_0' },
+    { name: 'conv2', size: Math.min(32, 32), wsLayer: 'layer_4' },
+    { name: 'conv3', size: Math.min(32, 64), wsLayer: 'layer_7' },
+    { name: 'conv4', size: Math.min(32, 64), wsLayer: 'layer_10' },
+    { name: 'fc1', size: Math.min(32, 32), wsLayer: 'layer_15' },  // Fully Connected
+    { name: 'output', size: 10, wsLayer: 'layer_18' }  // **Final 10 output nodes**
 ];
 
-const THRESHOLD = 0.2;
+
+const flattenActivations = (data, shape) => {
+    if (!Array.isArray(data)) return [];
+
+    if (shape.length === 4) {
+        // Conv/Feature Map: [Batch, Channels, Height, Width]
+        const [batch, channels, height, width] = shape;
+        return data.flat(batch).flat(channels).flat(height).flat(width);
+    } else if (shape.length === 2) {
+        // Fully Connected Layer: [Batch, Neurons]
+        const [batch, neurons] = shape;
+        return data.flat(batch).flat(neurons);
+    } else if (shape.length === 3) {
+        // Rare cases like LSTM: [Batch, Time, Features]
+        const [batch, time, features] = shape;
+        return data.flat(batch).flat(time).flat(features);
+    } else {
+        return data.flat();
+    }
+};
+
 
 const Node = React.memo(({ position, intensity }) => (
     <mesh position={position}>
@@ -74,12 +94,11 @@ const Skeleton = () => {
     const [connections, setConnections] = useState([]);
     const [activity, setActivity] = useState({});
     const [isConnected, setIsConnected] = useState(false);
-    const [isInteracting, setIsInteracting] = useState(false);
     const wsRef = useRef(null);
 
     const updateActivity = debounce((layer, data) => {
         setActivity(prev => ({ ...prev, [layer]: data }));
-    }, 100);
+    }, 20);
 
     useEffect(() => {
         if (wsRef.current) return;
@@ -103,22 +122,23 @@ const Skeleton = () => {
             setIsConnected(false);
         };
 
-        ws.onmessage = (event) => {
-            if (!event.data.startsWith('{')) {
-                return;
-            }
+       ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                const { layer, activation_data } = data;
+                const { layer, activation_data, activation_shape } = data;
+                console.log("recieved data:", {data});
+                if (layer && activation_data && activation_shape) {
 
-                if (layer && activation_data) {
-                    console.log(`📡 Activation received for layer: ${layer}`);
-                    updateActivity(layer, activation_data);
+                    // Flatten based on shape
+                    const flattenedData = flattenActivations(activation_data, activation_shape);
+
+                    // Update activity
+                    updateActivity(layer, flattenedData);
                 }
             } catch (error) {
                 console.error('❌ Error parsing WebSocket message:', error);
             }
-        };
+       };
 
         return () => {
             console.log('🔄 Cleaning up WebSocket connection');
@@ -177,26 +197,28 @@ const Skeleton = () => {
     }, []);
 
     const memoizedNodes = useMemo(() => nodes.map(node => {
-        let intensity = 0.5;
-        if (node.layer === 'input' && activity['input']) {
-            const flatData = activity['input'].flat(3);
-            intensity = (flatData[node.wsIndex] || 0.5) * 10; // inflate the intensity to know for sure which activations are mapped
-        } else {
-            intensity = (activity[node.layer]?.[0]?.[node.wsIndex] || 0.5);
-        }
-        return (
-            <Node
-                key={node.id}
-                position={node.position}
-                intensity={intensity}
-            />
+    const layerData = activity[node.layer] || [];
+    const intensity = layerData[node.wsIndex] ?? 0.5;
+
+    return (
+        <Node
+            key={node.id}
+            position={node.position}
+            intensity={Math.min(1, Math.max(0, intensity))}
+        />
         );
     }), [nodes, activity]);
 
+
     const memoizedConnections = useMemo(() => connections.map((conn, index) => {
-        const startIntensity = (activity[conn.startLayer]?.[0]?.[conn.startIndex] || 0.5);
-        const endIntensity = (activity[conn.endLayer]?.[0]?.[conn.endIndex] || 0.5);
-        const opacity = (startIntensity + endIntensity) / 2;
+        const startLayerData = activity[conn.startLayer] || [];
+        const endLayerData = activity[conn.endLayer] || [];
+
+        const startIntensity = startLayerData[conn.startIndex] ?? 0.5;
+        const endIntensity = endLayerData[conn.endIndex] ?? 0.5;
+
+        const opacity = Math.min(1, Math.max(0, (startIntensity + endIntensity) / 2));
+
         return (
             <Connection
                 key={index}
@@ -207,12 +229,13 @@ const Skeleton = () => {
         );
     }), [connections, activity]);
 
+
     return (
         <div className="render-background">
             <MetricsOverlay nodes={nodes} connections={connections} />
             <SocketOverlay isConnected={isConnected} />
             <div className="skeleton-container">
-                <Canvas camera={{ position: [0, 0, 70], fov: 50 }} frameloop={isInteracting ? 'always' : 'demand'}>
+                <Canvas camera={{ position: [0, 0, 70], fov: 50 }} frameloop='demand'>
                     <ambientLight intensity={0.5} />
                     <pointLight position={[10, 10, 10]} />
                     {memoizedNodes}
