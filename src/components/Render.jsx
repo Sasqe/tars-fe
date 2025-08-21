@@ -2,18 +2,16 @@ import React, { useEffect, useState } from "react";
 
 const Skeleton = () => {
   const rawLayers = [
-    { name: "Input", size: 14 },
-    { name: "Conv2d 1", size: 16 },
-    { name: "Conv2d 2", size: 32 },
-    { name: "Conv2d 3", size: 64 },
-    { name: "Conv2d 4", size: 64 },
+    { name: "Input", size: 16 },
+    { name: "Conv2d 1", size: 32 },
+    { name: "Conv2d 2", size: 64 },
     { name: "Fc 1", size: 32 },
     { name: "Output", size: 10 }
   ];
 
   const layers = rawLayers.map(layer => ({
     ...layer,
-    size: Math.min(layer.size, 16)
+    size: Math.min(layer.size, 32)
   }));
 
   const [windowSize, setWindowSize] = useState({
@@ -22,6 +20,7 @@ const Skeleton = () => {
   });
 
   const [outputActivations, setOutputActivations] = useState(new Array(10).fill(0));
+  const [inputActivations, setInputActivations] = useState(new Array(layers[0].size).fill(0));
 
   useEffect(() => {
     const handleResize = () => {
@@ -38,10 +37,21 @@ const Skeleton = () => {
         console.log("connected");
       }
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (e) {
+        // not JSON (e.g. handshake text), ignore
+        console.log("(WSMessage):", event.data);
+        return;
+      }
         if (data.layer === "layer_17") {
           console.log("processing output data!");
           processOutputLayerActivations(data.activation_data[0]);
+        }
+        if (data.layer === "input") {
+          console.log("processing input data!");
+          processInputLayerActivations(data.activation_data[0][0]);
         }
       };
     } catch (error) {
@@ -64,20 +74,51 @@ const Skeleton = () => {
     setOutputActivations(normalizedActivations);
   };
 
-  const svgWidth = windowSize.width * 0.8;
-  const svgHeight = windowSize.height * 0.8;
-  const leftOffset = (windowSize.width - svgWidth) / 2;
-  const topOffset = (windowSize.height - svgHeight) / 2;
+  const processInputLayerActivations = (activations) => {
+    const inputCount = layers[0].size;
+    const rows = Math.floor(Math.sqrt(inputCount)), cols = Math.ceil(inputCount / rows);             // now exactly 16 blocks
+    const blockH = 28 / rows;             // = 7
+    const blockW = 28 / cols;             // = 7
+    const blockMeans = [];
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        let sum = 0, count = 0;
+        const y0 = Math.floor(r * blockH);
+        const y1 = Math.floor((r + 1) * blockH);
+        const x0 = Math.floor(c * blockW);
+        const x1 = Math.floor((c + 1) * blockW);
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            sum += activations[y][x];
+            count++;
+          }
+        }
+        blockMeans.push(sum / count);
+      }
+    }
+
+    // normalize into [0…1]
+    const selected = blockMeans.slice(0, inputCount);
+    const normalized = selected.map(v => (v + 1) / 2);
+    setInputActivations(normalized);
+  }
+
+  const svgWidth   = windowSize.width;
+  const svgHeight  = windowSize.height;
+  const leftOffset = 0;
+  const topOffset  = 0;
 
   const layerCount = layers.length;
-  const layerGap = svgWidth / (layerCount + 1);
+  const sidePadding = svgWidth * 0.04;
+  const layerGap = (svgWidth - sidePadding * 2) / (layerCount - 1);// 5% on each side
 
   const inputNeuronCount = 16;
-  const baseGap = svgHeight / (inputNeuronCount + 1);
-  const neuronGap = baseGap * 0.9;
+  const baseGap = svgHeight / (inputNeuronCount);
+  const neuronGap = baseGap * 0.5;
 
   const positions = layers.map((layer, layerIdx) => {
-    const x = layerGap * (layerIdx + 1);
+    const x = sidePadding + layerGap * layerIdx;
     const neuronCount = layer.size;
     const centralY = svgHeight / 2;
     let neuronPositions = Array.from({ length: neuronCount }).map((_, neuronIdx) => {
@@ -117,7 +158,14 @@ const Skeleton = () => {
   let neurons = [];
   positions.forEach((layerPositions, layerIdx) => {
     layerPositions.forEach(({ x, y }, neuronIdx) => {
-      const brightness = layerIdx === layers.length - 1 ? outputActivations[neuronIdx] : 0.4;
+      let brightness;
+      if (layerIdx === 0) {
+        brightness = Math.min(inputActivations[neuronIdx] * 30, 1);
+      } else if (layerIdx === layers.length - 1) {
+        brightness = outputActivations[neuronIdx];
+      } else {
+        brightness = 0.4;  // until Conv1 is hooked up
+      }
       const fillColor = `rgb(${brightness * 255}, ${brightness * 255}, ${brightness * 255})`;
 
       neurons.push(
@@ -148,29 +196,14 @@ const Skeleton = () => {
     </text>
   ));
 
+  const separatorX = sidePadding + layerGap * 0;
   const separatorCircles = [
-    { x: layerGap, y: svgHeight / 2 - neuronGap / 3},
-    { x: layerGap, y: svgHeight / 2 },
-    { x: layerGap, y: svgHeight / 2 + neuronGap / 3 }
+    { x: separatorX, y: svgHeight / 2 - neuronGap / 3 },
+    { x: separatorX, y: svgHeight / 2 },
+    { x: separatorX, y: svgHeight / 2 + neuronGap / 3 }
   ].map(({ x, y }, idx) => (
     <circle key={`separator-${idx}`} cx={x} cy={y} r={2} fill="#fff" />
   ));
-
-  const labels = layers.map((layer, layerIdx) => {
-    const x = layerGap * (layerIdx + 1);
-    return (
-      <text
-        key={`label-${layerIdx}`}
-        x={x}
-        y={20}
-        fill="#777"
-        fontSize="14"
-        textAnchor="middle"
-      >
-        {layer.name}
-      </text>
-    );
-  });
 
   return (
     <div
@@ -190,7 +223,6 @@ const Skeleton = () => {
         {connections}
         {neurons}
         {separatorCircles}
-        {labels}
         {outputLabels}
       </svg>
     </div>
