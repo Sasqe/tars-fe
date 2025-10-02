@@ -1,0 +1,2 @@
+WEBSOCKET ws://localhost:8000/ws
+Accept: application/json

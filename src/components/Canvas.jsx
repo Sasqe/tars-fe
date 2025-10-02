@@ -1,7 +1,8 @@
 import React, {useRef, useState, useEffect, useCallback} from 'react';
 import '../styles/Canvas.css';
+import config from "../config";
 
-const Canvas = () => {
+const Canvas = ({ onResult }) => {
   const [visible, setVisible] = useState(false);
   const holdTimeout = useRef(null);
   const isHolding = useRef(false);
@@ -71,20 +72,25 @@ const submitDrawing = useCallback(() => {
         const formData = new FormData();
         formData.append('file', blob, 'drawing.png');
 
-        fetch('http://localhost:8000/predict', {
+        fetch(`${config.ASK_URL}`, {
           method: 'POST',
+          headers: {
+            "x-api-key": config.API_KEY
+          },
           body: formData
         })
           .then(response => response.json())
           .then(data => {
             console.log('API Response:', data);
+            onResult?.(data);
           })
           .catch(error => {
             console.error('Error submitting drawing:', error);
+            onResult?.({ error: String(error) });
           });
       }
     }, 'image/png');
-  }, []);
+  }, [onResult]);
 
   const handleMouseDown = (e) => {
     isHolding.current = true;
