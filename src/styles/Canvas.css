@@ -24,3 +24,11 @@
     opacity: 1;
     pointer-events: all;
 }
+
+.canvas-container, .canvas-wrapper {
+    -webkit-user-select: none;   /* Disable text selection iOS Safari */
+    -webkit-touch-callout: none; /* Disable long press callout */
+    user-select: none;
+    touch-action: none;           /* Stop scrolling/pinch gestures */
+}
+
