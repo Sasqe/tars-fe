@@ -2,6 +2,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import Banner from './Banner';
 import config from "../config";
+import '../styles/Render.css'
 /* ---------- Config (hoisted) ---------- */
 const LAYER_CAP = 32;
 
@@ -217,102 +218,130 @@ const Skeleton = ({ prediction }) => {
 
     // WebSocket
     useEffect(() => {
-        const ws = new WebSocket(`${config.WS_URL}?api_key=${config.API_KEY}`);
-        ws.onopen = () => {
-            console.log("connected");
-            setIsConnected(true);
-        };
+        let ws;
+        let retryTimeout = null;
+        let reconnectDelay = 2000; // 2 seconds between retries
+        let stop = false;
 
-        ws.onerror = () => {
-            console.log("error");
+        const connect = () => {
+            if (stop) return;
+            console.log("Connecting WebSocket...");
             setIsConnected(false);
-        };
 
-        ws.onclose = () => {
-            console.log("disconnected");
-            setIsConnected(false);
-        };
+            ws = new WebSocket(`${config.WS_URL}?api_key=${config.API_KEY}`);
 
-        ws.onmessage = (event) => {
-            // Pause replay on any live data (don’t wipe to baseline)
-            if (isPlayingRef.current) {
-                setIsPlaying(false);
-                stopScheduler();
-            }
+            ws.onopen = () => {
+                console.log("WebSocket connected");
+                setIsConnected(true);
+                reconnectDelay = 2000; // reset backoff after successful connection
+            };
 
-            let data; try { data = JSON.parse(event.data); } catch { return; }
-
-            if (data.layer === "input") {
-                // New pass starting — clear idle timer
-                if (endIdleTimerRef.current) { clearTimeout(endIdleTimerRef.current); endIdleTimerRef.current = null; }
-
-                // Input [28][28] -> 16 blocks
-                const activations = data.activation_data[0][0];
-                const inputCount = LAYERS[0].size;
-                const rows = Math.floor(Math.sqrt(inputCount));
-                const cols = Math.ceil(inputCount / rows);
-                const blockH = 28 / rows, blockW = 28 / cols;
-                const blockMeans = [];
-                for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        let sum = 0, count = 0;
-                        const y0 = Math.floor(r * blockH), y1 = Math.floor((r + 1) * blockH);
-                        const x0 = Math.floor(c * blockW), x1 = Math.floor((c + 1) * blockW);
-                        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { sum += activations[y][x]; count++; }
-                        blockMeans.push(sum / count);
-                    }
+            ws.onmessage = (event) => {
+                if (isPlayingRef.current) {
+                    setIsPlaying(false);
+                    stopScheduler();
                 }
-                const selected   = blockMeans.slice(0, inputCount);
-                const normalized = selected.map(v => (v + 1) / 2);
 
-                // Update display + live buffer
-                setInputActivations(normalized);
-                liveInputRef.current = normalized;
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch {
+                    return;
+                }
 
-            } else if (data.layer === "layer_3") {
-                const arr = reduceConvActivations(data.activation_data[0], LAYERS[1].size);
-                setConv1Activations(arr);
-                liveC1Ref.current = arr;
+                if (data.layer === "input") {
+                    if (endIdleTimerRef.current) {
+                        clearTimeout(endIdleTimerRef.current);
+                        endIdleTimerRef.current = null;
+                    }
 
-            } else if (data.layer === "layer_9") {
-                const arr = reduceConvActivations(data.activation_data[0], LAYERS[2].size);
-                setConv2Activations(arr);
-                liveC2Ref.current = arr;
+                    const activations = data.activation_data[0][0];
+                    const inputCount = LAYERS[0].size;
+                    const rows = Math.floor(Math.sqrt(inputCount));
+                    const cols = Math.ceil(inputCount / rows);
+                    const blockH = 28 / rows;
+                    const blockW = 28 / cols;
+                    const blockMeans = [];
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            let sum = 0,
+                                count = 0;
+                            const y0 = Math.floor(r * blockH),
+                                y1 = Math.floor((r + 1) * blockH);
+                            const x0 = Math.floor(c * blockW),
+                                x1 = Math.floor((c + 1) * blockW);
+                            for (let y = y0; y < y1; y++)
+                                for (let x = x0; x < x1; x++) {
+                                    sum += activations[y][x];
+                                    count++;
+                                }
+                            blockMeans.push(sum / count);
+                        }
+                    }
+                    const selected = blockMeans.slice(0, inputCount);
+                    const normalized = selected.map((v) => (v + 1) / 2);
+                    setInputActivations(normalized);
+                    liveInputRef.current = normalized;
+                } else if (data.layer === "layer_3") {
+                    const arr = reduceConvActivations(data.activation_data[0], LAYERS[1].size);
+                    setConv1Activations(arr);
+                    liveC1Ref.current = arr;
+                } else if (data.layer === "layer_9") {
+                    const arr = reduceConvActivations(data.activation_data[0], LAYERS[2].size);
+                    setConv2Activations(arr);
+                    liveC2Ref.current = arr;
+                } else if (data.layer === "layer_14") {
+                    const arr = reduceVectorActivations(data.activation_data[0], LAYERS[3].size);
+                    setFc1Activations(arr);
+                    liveFc1Ref.current = arr;
+                } else if (data.layer === "layer_17") {
+                    const outArr = minMax01(data.activation_data[0]);
+                    setOutputActivations(outArr);
+                    liveOutRef.current = outArr;
 
-            } else if (data.layer === "layer_14") {
-                const arr = reduceVectorActivations(data.activation_data[0], LAYERS[3].size);
-                setFc1Activations(arr);
-                liveFc1Ref.current = arr;
+                    if (endIdleTimerRef.current)
+                        clearTimeout(endIdleTimerRef.current);
+                    endIdleTimerRef.current = setTimeout(() => {
+                        snapshotRef.current = {
+                            input: [...liveInputRef.current],
+                            conv1: [...liveC1Ref.current],
+                            conv2: [...liveC2Ref.current],
+                            fc1: [...liveFc1Ref.current],
+                            output: [...liveOutRef.current],
+                        };
+                        setSnapshotVersion((v) => v + 1);
+                        setIsPlaying(true);
+                    }, END_IDLE_MS);
+                }
+            };
 
-            } else if (data.layer === "layer_17") {
-                // Update output immediately
-                const outArr = minMax01(data.activation_data[0]);
-                setOutputActivations(outArr);
-                liveOutRef.current = outArr;
+            ws.onclose = () => {
+                console.log("WebSocket closed, retrying in", reconnectDelay, "ms");
+                setIsConnected(false);
+                if (!stop) {
+                    retryTimeout = setTimeout(() => {
+                        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000); // exponential backoff cap 10s
+                        connect();
+                    }, reconnectDelay);
+                }
+            };
 
-                // (Re)start idle timer ONLY on layer_17
-                if (endIdleTimerRef.current) clearTimeout(endIdleTimerRef.current);
-                endIdleTimerRef.current = setTimeout(() => {
-                    // Snapshot from live buffers (immune to replay resets)
-                    snapshotRef.current = {
-                        input:  [...liveInputRef.current],
-                        conv1:  [...liveC1Ref.current],
-                        conv2:  [...liveC2Ref.current],
-                        fc1:    [...liveFc1Ref.current],
-                        output: [...liveOutRef.current]
-                    };
-                    setSnapshotVersion(v => v + 1);
-                    setIsPlaying(true); // effect below starts scheduler
-                }, END_IDLE_MS);
-            }
+            ws.onerror = (err) => {
+                console.log("WebSocket error", err);
+                ws.close();
+            };
         };
+
+        connect();
+
         return () => {
+            stop = true;
+            if (retryTimeout) clearTimeout(retryTimeout);
             if (endIdleTimerRef.current) clearTimeout(endIdleTimerRef.current);
             stopScheduler();
-            ws.close();
-            setIsConnected(false);
+            if (ws) ws.close();
         };
-    }, []); // stable
+    }, []);
 
     // Start/restart scheduler when toggled or a new snapshot arrives
     useEffect(() => {
@@ -456,6 +485,9 @@ const Skeleton = ({ prediction }) => {
                     position: 'fixed',
                     top: '1rem',
                     left: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     padding: '4px 10px',
                     borderRadius: '9999px',
                     backgroundColor: isConnected ? 'rgba(0, 128, 0, 0.5)' : 'rgba(128, 0, 0, 0.5)',
@@ -467,7 +499,8 @@ const Skeleton = ({ prediction }) => {
                     pointerEvents: 'none'
                 }}
             >
-                {isConnected ? 'Connected' : 'Disconnected'}
+                {isConnected ? 'Connected' : 'Disconnected...'}
+                {!isConnected && <div className="spinner" />}
             </div>
 
             <div
