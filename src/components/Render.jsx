@@ -449,7 +449,6 @@ const Skeleton = ({ prediction }) => {
         { x: separatorX, y: svgHeight / 2 },
         { x: separatorX, y: svgHeight / 2 + neuronGap / 3 }
     ].map(({ x, y }, idx) => <circle key={`separator-${idx}`} cx={x} cy={y} r={2} fill="#fff" />);
-    const labelTranslate = windowSize.width < 600 ? 40 : 0;
     return (
         <div style={{
             position: "absolute", left: 0, top: 0, width: "100vw", height: "100vh",
@@ -481,7 +480,13 @@ const Skeleton = ({ prediction }) => {
                     {connections}
                     {neurons}
                     {separatorCircles}
-                    <g transform={`translate(${labelTranslate}, 0) scale(${windowSize.width / svgWidth})`}>
+                    <g
+                        transform={
+                            windowSize.width < 600
+                                ? `translate(${20}, 0)`   // push labels a bit right on mobile
+                                : ""
+                        }
+                    >
                         {outputLabels}
                     </g>
                 </svg>
