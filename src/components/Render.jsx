@@ -455,12 +455,28 @@ const Skeleton = ({ prediction }) => {
             position: "absolute", left: 0, top: 0, width: "100vw", height: "100vh",
             backgroundColor: "black", display: "flex", justifyContent: "center", alignItems: "center"
         }}>
-            <svg width={svgWidth} height={svgHeight} style={{ position: "absolute", left: 0, top: 0 }}>
-                {connections}
-                {neurons}
-                {separatorCircles}
-                {outputLabels}
-            </svg>
+            <div
+                style={{
+                    width: "100vw",
+                    height: "100vh",
+                    overflow: "hidden",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center"
+                }}
+            >
+                <svg
+                    width="100%"
+                    height="100%"
+                    viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                    preserveAspectRatio="xMidYMid meet"
+                >
+                    {connections}
+                    {neurons}
+                    {separatorCircles}
+                    {outputLabels}
+                </svg>
+            </div>
 
             {/* Grad-CAM — BOTTOM RIGHT */}
             {gradcamUrl && (
