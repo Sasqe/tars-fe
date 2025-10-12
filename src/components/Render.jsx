@@ -470,11 +470,26 @@ const Skeleton = ({ prediction }) => {
                     height="100%"
                     viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                     preserveAspectRatio="xMidYMid meet"
+                    style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        maxWidth: "100vw",
+                        maxHeight: "100vh",
+                    }}
                 >
                     {connections}
                     {neurons}
                     {separatorCircles}
-                    {outputLabels}
+                    <g
+                        transform={
+                            windowSize.width < 600
+                                ? `translate(${-40}, 0) scale(${windowSize.width / svgWidth})`
+                                : ""
+                        }
+                    >
+                        {outputLabels}
+                    </g>
                 </svg>
             </div>
 
@@ -515,7 +530,7 @@ const Skeleton = ({ prediction }) => {
                     pointerEvents: 'none'
                 }}
             >
-                {isConnected ? 'ur mom' : 'Disconnected...'}
+                {isConnected ? 'Connected' : 'Disconnected...'}
                 {!isConnected && <div className="spinner" />}
             </div>
 
