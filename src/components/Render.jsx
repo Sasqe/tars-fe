@@ -437,11 +437,28 @@ const Skeleton = ({ prediction }) => {
     });
 
     const outputLayerIndex = layers.length - 1;
-    const outputLabels = positions[outputLayerIndex].map(({ x, y }, idx) => (
-        <text key={`output-label-${idx}`} x={x + 20} y={y + 4} fill="#fff" fontSize="14" textAnchor="start">
-            {idx}
-        </text>
-    ));
+    const outputLabels = positions[outputLayerIndex].map(({ x, y }, idx) => {
+        // dynamically adjust x so labels never go offscreen
+        const mobile = windowSize.width < 600;
+        const labelX = mobile
+            ? Math.min(x + 8, svgWidth * 0.95) // keep near right edge but visible
+            : x + 20;
+
+        const fontSize = mobile ? 10 : 14;
+
+        return (
+            <text
+                key={`output-label-${idx}`}
+                x={labelX}
+                y={y + 4}
+                fill="#fff"
+                fontSize={fontSize}
+                textAnchor="start"
+            >
+                {idx}
+            </text>
+        );
+    });
 
     const separatorX = sidePadding + layerGap * 0;
     const separatorCircles = [
@@ -480,15 +497,7 @@ const Skeleton = ({ prediction }) => {
                     {connections}
                     {neurons}
                     {separatorCircles}
-                    <g
-                        transform={
-                            windowSize.width < 600
-                                ? `translate(${windowSize.width / 30}, 0)`   // push labels a bit right on mobile
-                                : ""
-                        }
-                    >
-                        {outputLabels}
-                    </g>
+                    {outputLabels}
                 </svg>
             </div>
 
