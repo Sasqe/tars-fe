@@ -483,7 +483,7 @@ const Skeleton = ({ prediction }) => {
                     <g
                         transform={
                             windowSize.width < 600
-                                ? `translate(${20}, 0)`   // push labels a bit right on mobile
+                                ? `translate(${windowSize.width / 30}, 0)`   // push labels a bit right on mobile
                                 : ""
                         }
                     >
