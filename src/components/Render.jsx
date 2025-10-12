@@ -515,7 +515,7 @@ const Skeleton = ({ prediction }) => {
                     pointerEvents: 'none'
                 }}
             >
-                {isConnected ? 'Connected' : 'Disconnected...'}
+                {isConnected ? 'ur mom' : 'Disconnected...'}
                 {!isConnected && <div className="spinner" />}
             </div>
 
