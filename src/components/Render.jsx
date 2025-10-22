@@ -128,6 +128,11 @@ const Skeleton = ({ prediction }) => {
     const [conv1Activations,  setConv1Activations]  = useState(new Array(layers[1].size).fill(0));
     const [conv2Activations,  setConv2Activations]  = useState(new Array(layers[2].size).fill(0));
 
+    const wsRef = useRef(null);
+    const retryTimeoutRef = useRef(null);
+    const reconnectDelayRef = useRef(2000);
+    const stopRef = useRef(false);
+
     /* Live buffers (truth) — updated ONLY by WS, NEVER by replay resets */
     const liveInputRef  = useRef([...inputActivations]);
     const liveC1Ref     = useRef([...conv1Activations]);
@@ -218,22 +223,23 @@ const Skeleton = ({ prediction }) => {
 
     // WebSocket
     useEffect(() => {
-        let ws;
-        let retryTimeout = null;
-        let reconnectDelay = 1000; // 2 seconds between retries
-        let stop = false;
-
         const connect = () => {
-            if (stop) return;
+            if (stopRef.current) return;
+            if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+                console.log("Skipped connect — socket not fully closed yet");
+                return;
+            }
+
             console.log("Connecting WebSocket...");
             setIsConnected(false);
 
-            ws = new WebSocket(`${config.WS_URL}?api_key=${config.API_KEY}`);
+            const ws = new WebSocket(`${config.WS_URL}?api_key=${config.API_KEY}`);
+            wsRef.current = ws;
 
             ws.onopen = () => {
-                console.log("WebSocket connected");
+                console.log("✅ WebSocket connected");
                 setIsConnected(true);
-                reconnectDelay = 1000; // reset backoff after successful connection
+                reconnectDelayRef.current = 2000; // reset backoff
                 liveInputRef.current = [];
                 liveC1Ref.current = [];
                 liveC2Ref.current = [];
@@ -270,8 +276,7 @@ const Skeleton = ({ prediction }) => {
                     const blockMeans = [];
                     for (let r = 0; r < rows; r++) {
                         for (let c = 0; c < cols; c++) {
-                            let sum = 0,
-                                count = 0;
+                            let sum = 0, count = 0;
                             const y0 = Math.floor(r * blockH),
                                 y1 = Math.floor((r + 1) * blockH);
                             const x0 = Math.floor(c * blockW),
@@ -284,8 +289,7 @@ const Skeleton = ({ prediction }) => {
                             blockMeans.push(sum / count);
                         }
                     }
-                    const selected = blockMeans.slice(0, inputCount);
-                    const normalized = selected.map((v) => (v + 1) / 2);
+                    const normalized = blockMeans.slice(0, inputCount).map(v => (v + 1) / 2);
                     setInputActivations(normalized);
                     liveInputRef.current = normalized;
                 } else if (data.layer === "layer_3") {
@@ -315,26 +319,28 @@ const Skeleton = ({ prediction }) => {
                             fc1: [...liveFc1Ref.current],
                             output: [...liveOutRef.current],
                         };
-                        setSnapshotVersion((v) => v + 1);
+                        setSnapshotVersion(v => v + 1);
                         setIsPlaying(true);
                     }, END_IDLE_MS);
                 }
             };
 
-            ws.onclose = () => {
-                console.log("WebSocket closed, retrying in", reconnectDelay, "ms");
+            ws.onclose = (e) => {
+                console.log("⚠️ WebSocket closed:", e.code, e.reason);
                 setIsConnected(false);
-                ws = null;
-                if (!stop) {
-                    retryTimeout = setTimeout(() => {
-                        reconnectDelay = Math.min(reconnectDelay * 1.5, 3000); // exponential backoff cap 10s
+                wsRef.current = null;
+                if (!stopRef.current) {
+                    const delay = reconnectDelayRef.current;
+                    console.log(`Reconnecting in ${delay}ms`);
+                    retryTimeoutRef.current = setTimeout(() => {
+                        reconnectDelayRef.current = Math.min(delay * 1.5, 10000);
                         connect();
-                    }, reconnectDelay);
+                    }, delay);
                 }
             };
 
             ws.onerror = (err) => {
-                console.log("WebSocket error", err);
+                console.log("❌ WebSocket error:", err.message);
                 ws.close();
             };
         };
@@ -343,16 +349,17 @@ const Skeleton = ({ prediction }) => {
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible" && !isConnected) {
-                console.log("Page visible again — forcing reconnect");
+                console.log("🔁 Page visible again — forcing reconnect");
                 connect();
             }
         };
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
         return () => {
-            stop = true;
-            if (retryTimeout) clearTimeout(retryTimeout);
-            if (ws && ws.readyState !== WebSocket.CLOSED) ws.close();
+            stopRef.current = true;
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED)
+                wsRef.current.close();
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             stopScheduler();
         };
