@@ -220,7 +220,7 @@ const Skeleton = ({ prediction }) => {
     useEffect(() => {
         let ws;
         let retryTimeout = null;
-        let reconnectDelay = 2000; // 2 seconds between retries
+        let reconnectDelay = 1000; // 2 seconds between retries
         let stop = false;
 
         const connect = () => {
@@ -233,7 +233,13 @@ const Skeleton = ({ prediction }) => {
             ws.onopen = () => {
                 console.log("WebSocket connected");
                 setIsConnected(true);
-                reconnectDelay = 2000; // reset backoff after successful connection
+                reconnectDelay = 1000; // reset backoff after successful connection
+                liveInputRef.current = [];
+                liveC1Ref.current = [];
+                liveC2Ref.current = [];
+                liveFc1Ref.current = [];
+                liveOutRef.current = [];
+                snapshotRef.current = null;
             };
 
             ws.onmessage = (event) => {
@@ -318,9 +324,10 @@ const Skeleton = ({ prediction }) => {
             ws.onclose = () => {
                 console.log("WebSocket closed, retrying in", reconnectDelay, "ms");
                 setIsConnected(false);
+                ws = null;
                 if (!stop) {
                     retryTimeout = setTimeout(() => {
-                        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000); // exponential backoff cap 10s
+                        reconnectDelay = Math.min(reconnectDelay * 1.5, 3000); // exponential backoff cap 10s
                         connect();
                     }, reconnectDelay);
                 }
@@ -334,14 +341,22 @@ const Skeleton = ({ prediction }) => {
 
         connect();
 
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible" && !isConnected) {
+                console.log("Page visible again — forcing reconnect");
+                connect();
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
         return () => {
             stop = true;
             if (retryTimeout) clearTimeout(retryTimeout);
-            if (endIdleTimerRef.current) clearTimeout(endIdleTimerRef.current);
+            if (ws && ws.readyState !== WebSocket.CLOSED) ws.close();
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
             stopScheduler();
-            if (ws) ws.close();
         };
-    }, []);
+    }, [isConnected]);
 
     // Start/restart scheduler when toggled or a new snapshot arrives
     useEffect(() => {
